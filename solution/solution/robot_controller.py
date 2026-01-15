@@ -3,12 +3,12 @@
 Robot Controller for Hazardous Material Collection
 - Collects RED (contaminated) barrels
 - Deposits in GREEN collection zone  
-- Decontaminates in CYAN zone when radiation >= 30
+- Decontaminates in BLUE zone when radiation >= 30
 """
 
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist
+from geometry_msgs. msg import Twist
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from assessment_interfaces.msg import BarrelList, ZoneList, RadiationList
@@ -37,8 +37,8 @@ class RobotState(Enum):
 class RobotController(Node):
     RED = 0
     BLUE = 1
-    ZONE_CYAN = 0
-    ZONE_GREEN = 1
+    ZONE_BLUE = 0    # Decontamination zone (BLUE color)
+    ZONE_GREEN = 1   # Collection zone (GREEN color)
     IMAGE_CENTER_X = 320
 
     def __init__(self):
@@ -50,19 +50,19 @@ class RobotController(Node):
 
         self.state = RobotState.SEARCHING
         self.holding_barrel = False
-        self. service_in_progress = False
-        self.barrels_collected = 0
-        self. radiation_level = 0
+        self.service_in_progress = False
+        self. barrels_collected = 0
+        self.radiation_level = 0
         self.state_timer = 0
         self.pickup_attempts = 0
         self.nav_log_counter = 0
 
         # Known locations
-        self.storage_zone = {'x': 13.5, 'y': 9.4}
-        self.decontamination_zone = {'x': 7.5, 'y': 9.4}
+        self.storage_zone = {'x': 13.5, 'y': 9.4}       # GREEN collection zone
+        self.decontamination_zone = {'x': 7.5, 'y': 9.4}  # BLUE decontamination zone
         self.barrel_areas = [
             {'x': -2.0, 'y': 4.0},
-            {'x':  -9.0, 'y': 5.0},
+            {'x': -9.0, 'y': 5.0},
             {'x':  -12.0, 'y': 6.0},
             {'x': -11.0, 'y': 10.0},
         ]
@@ -73,7 +73,7 @@ class RobotController(Node):
         self.left_distance = 10.0
         self.right_distance = 10.0
         self.target_barrel = None
-        self. visible_zones = []
+        self.visible_zones = []
         self.robot_x = 0.0
         self.robot_y = -2.0
         self.robot_yaw = 0.0
@@ -81,7 +81,7 @@ class RobotController(Node):
         # Publishers and subscribers
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.create_subscription(LaserScan, 'scan', self.scan_callback, 10)
-        self.create_subscription(Odometry, 'odom', self. odom_callback, 10)
+        self.create_subscription(Odometry, 'odom', self.odom_callback, 10)
 
         barrel_qos = QoSProfile(depth=10, reliability=ReliabilityPolicy. BEST_EFFORT)
         self.create_subscription(BarrelList, 'barrels', self.barrel_callback, barrel_qos)
@@ -91,7 +91,7 @@ class RobotController(Node):
         # Service clients
         self.pickup_client = self.create_client(ItemRequest, '/pick_up_item')
         self.offload_client = self.create_client(ItemRequest, '/offload_item')
-        self.decontaminate_client = self. create_client(ItemRequest, '/decontaminate')
+        self.decontaminate_client = self.create_client(ItemRequest, '/decontaminate')
         
         self.pickup_client.wait_for_service(timeout_sec=10.0)
         self.offload_client.wait_for_service(timeout_sec=10.0)
@@ -144,20 +144,20 @@ class RobotController(Node):
         for entry in msg.data:
             if entry.robot_id == self.robot_id:
                 old_level = self.radiation_level
-                self.radiation_level = entry.level
+                self.radiation_level = entry. level
                 if abs(self.radiation_level - old_level) >= 5:
-                    self.get_logger().info('Radiation level: ' + str(self.radiation_level))
+                    self.get_logger().info('Radiation level:  ' + str(self.radiation_level))
                 break
 
     def get_distance_to(self, x, y):
-        return math.sqrt((x - self.robot_x)**2 + (y - self.robot_y)**2)
+        return math. sqrt((x - self.robot_x)**2 + (y - self. robot_y)**2)
 
     def get_angle_to(self, x, y):
         angle = math.atan2(y - self.robot_y, x - self.robot_x) - self.robot_yaw
         while angle > math.pi:
             angle -= 2 * math.pi
         while angle < -math.pi:
-            angle += 2 * math. pi
+            angle += 2 * math.pi
         return angle
 
     def navigate_to(self, x, y, cmd):
@@ -169,7 +169,7 @@ class RobotController(Node):
             if self.left_distance > self.right_distance:
                 cmd.angular.z = 0.5
             else:
-                cmd.angular.z = -0.5
+                cmd. angular.z = -0.5
             return dist
         
         if abs(angle) > 0.2:
@@ -194,10 +194,10 @@ class RobotController(Node):
         try:
             if future.result().success:
                 self.holding_barrel = True
-                self.barrels_collected += 1
+                self. barrels_collected += 1
                 self.pickup_attempts = 0
-                self. get_logger().info('*** COLLECTED BARREL #' + str(self.barrels_collected) + ' ***')
-                self. state = RobotState. NAVIGATING_TO_ZONE
+                self.get_logger().info('*** COLLECTED BARREL #' + str(self.barrels_collected) + ' ***')
+                self.state = RobotState.NAVIGATING_TO_ZONE
                 self.nav_log_counter = 0
                 self.get_logger().info('Heading to GREEN collection zone...')
             else:
@@ -215,19 +215,19 @@ class RobotController(Node):
     def offload_done(self, future):
         self.service_in_progress = False
         try:
-            if future.result().success:
-                self.holding_barrel = False
+            if future. result().success:
+                self. holding_barrel = False
                 self.get_logger().info('*** DEPOSITED BARREL IN GREEN ZONE, TOTAL:  ' + str(self.barrels_collected) + ' ***')
                 
                 if self.radiation_level >= 30:
-                    self. get_logger().warn('Radiation high (' + str(self.radiation_level) + '), going to CYAN decontamination zone!')
+                    self.get_logger().warn('Radiation high (' + str(self.radiation_level) + '), going to BLUE decontamination zone!')
                     self.state = RobotState.NAVIGATING_TO_DECONTAMINATION
                     self.nav_log_counter = 0
                 else:
                     self.get_logger().info('Going to find more barrels...')
-                    self.state = RobotState.NAVIGATING_TO_BARRELS
+                    self.state = RobotState. NAVIGATING_TO_BARRELS
             else:
-                self.get_logger().warn('Offload failed, retrying.. .')
+                self.get_logger().warn('Offload failed, retrying...')
                 self.state = RobotState.APPROACHING_ZONE
         except Exception as e:
             self.get_logger().error('Offload error: ' + str(e))
@@ -251,22 +251,22 @@ class RobotController(Node):
             self.cmd_pub.publish(cmd)
             return
 
-        if self.state == RobotState.SEARCHING: 
+        if self.state == RobotState.SEARCHING:
             self. do_searching(cmd)
-        elif self.state == RobotState.ALIGNING_TO_BARREL:
+        elif self.state == RobotState.ALIGNING_TO_BARREL: 
             self.do_aligning(cmd)
         elif self.state == RobotState.DRIVING_TO_BARREL:
             self.do_driving(cmd)
-        elif self.state == RobotState. PASSING_BARREL:
+        elif self.state == RobotState.PASSING_BARREL:
             self.do_passing(cmd)
-        elif self.state == RobotState.COLLECTING:
-            self.do_collecting(cmd)
+        elif self.state == RobotState. COLLECTING:
+            self. do_collecting(cmd)
         elif self.state == RobotState.NAVIGATING_TO_ZONE:
             self.do_nav_to_zone(cmd)
-        elif self.state == RobotState. APPROACHING_ZONE:
+        elif self.state == RobotState.APPROACHING_ZONE:
             self.do_approach_zone(cmd)
-        elif self.state == RobotState. DEPOSITING:
-            self. do_depositing(cmd)
+        elif self.state == RobotState.DEPOSITING:
+            self.do_depositing(cmd)
         elif self.state == RobotState.NAVIGATING_TO_DECONTAMINATION: 
             self.do_nav_to_decon(cmd)
         elif self.state == RobotState. APPROACHING_DECONTAMINATION: 
@@ -284,10 +284,10 @@ class RobotController(Node):
         if self.target_barrel:
             self.state = RobotState.ALIGNING_TO_BARREL
             self.state_timer = 0
-            self.get_logger().info('Barrel found, aligning...')
+            self.get_logger().info('Barrel found, aligning.. .')
             return
         
-        if self. state_timer > 80: 
+        if self.state_timer > 80:
             self.state = RobotState.NAVIGATING_TO_BARRELS
             self.state_timer = 0
             return
@@ -352,9 +352,9 @@ class RobotController(Node):
             cmd.linear.x = 0.20
             cmd.angular.z = 0.0
         else:
-            self.state = RobotState.COLLECTING
+            self.state = RobotState. COLLECTING
             self.state_timer = 0
-            self.get_logger().info('Passed barrel, collecting...')
+            self. get_logger().info('Passed barrel, collecting...')
 
     def do_collecting(self, cmd):
         self.get_logger().info('Attempting pickup...')
@@ -377,7 +377,7 @@ class RobotController(Node):
                                    ' pos=(' + str(round(self. robot_x, 1)) + ',' + str(round(self.robot_y, 1)) + ')')
         
         if dist < 3.0:
-            self.state = RobotState. APPROACHING_ZONE
+            self.state = RobotState.APPROACHING_ZONE
             self.state_timer = 0
 
     def do_approach_zone(self, cmd):
@@ -385,7 +385,7 @@ class RobotController(Node):
         
         green_zones = [z for z in self.visible_zones if z. zone == self.ZONE_GREEN]
         
-        if not green_zones:
+        if not green_zones: 
             cmd.angular.z = 0.3
             cmd.linear.x = 0.05
             if self.state_timer > 50:
@@ -402,7 +402,7 @@ class RobotController(Node):
             self.get_logger().info('Inside GREEN zone! Depositing...')
             return
         
-        cmd. linear.x = 0.15
+        cmd.linear.x = 0.15
         if abs(error) < 40:
             cmd.angular.z = 0.0
         else:
@@ -414,31 +414,33 @@ class RobotController(Node):
         self.call_service(self.offload_client, self.offload_done)
 
     def do_nav_to_decon(self, cmd):
+        """Navigate to BLUE decontamination zone"""
         self.nav_log_counter += 1
         
-        cyan_zones = [z for z in self.visible_zones if z. zone == self.ZONE_CYAN]
-        if cyan_zones:
+        blue_zones = [z for z in self.visible_zones if z. zone == self.ZONE_BLUE]
+        if blue_zones:
             self.state = RobotState.APPROACHING_DECONTAMINATION
             self.state_timer = 0
-            self.get_logger().info('CYAN zone visible!  Approaching.. .')
+            self.get_logger().info('BLUE zone visible!  Approaching...')
             return
         
         dist = self.navigate_to(self.decontamination_zone['x'], self.decontamination_zone['y'], cmd)
         
         if self.nav_log_counter % 50 == 0:
-            self. get_logger().info('Nav to CYAN: dist=' + str(round(dist, 1)) + 
-                                   ' pos=(' + str(round(self. robot_x, 1)) + ',' + str(round(self.robot_y, 1)) + ')')
+            self.get_logger().info('Nav to BLUE: dist=' + str(round(dist, 1)) + 
+                                   ' pos=(' + str(round(self.robot_x, 1)) + ',' + str(round(self.robot_y, 1)) + ')')
         
         if dist < 3.0:
-            self.state = RobotState.APPROACHING_DECONTAMINATION
+            self. state = RobotState. APPROACHING_DECONTAMINATION
             self.state_timer = 0
 
     def do_approach_decon(self, cmd):
-        self.state_timer += 1
+        """Approach BLUE decontamination zone"""
+        self. state_timer += 1
         
-        cyan_zones = [z for z in self.visible_zones if z.zone == self.ZONE_CYAN]
+        blue_zones = [z for z in self.visible_zones if z.zone == self. ZONE_BLUE]
         
-        if not cyan_zones:
+        if not blue_zones: 
             cmd.angular.z = 0.3
             cmd.linear.x = 0.05
             if self.state_timer > 50:
@@ -446,13 +448,13 @@ class RobotController(Node):
                 self.state_timer = 0
             return
         
-        zone = max(cyan_zones, key=lambda z: z.size)
+        zone = max(blue_zones, key=lambda z: z.size)
         error = zone.x - self.IMAGE_CENTER_X
         
         if zone.size > 20000:
-            self.state = RobotState. DECONTAMINATING
+            self.state = RobotState.DECONTAMINATING
             self.state_timer = 0
-            self.get_logger().info('Inside CYAN zone! Decontaminating...')
+            self.get_logger().info('Inside BLUE zone! Decontaminating...')
             return
         
         cmd.linear.x = 0.15
@@ -463,10 +465,12 @@ class RobotController(Node):
             cmd.angular.z = max(-0.3, min(0.3, cmd.angular.z))
 
     def do_decontaminating(self, cmd):
+        """Decontaminate in BLUE zone"""
         self.get_logger().info('Attempting decontamination.. .')
         self.call_service(self.decontaminate_client, self.decontaminate_done)
 
     def do_nav_to_barrels(self, cmd):
+        """Navigate to barrel areas to find more barrels"""
         if self.target_barrel:
             self.state = RobotState.ALIGNING_TO_BARREL
             self.state_timer = 0
